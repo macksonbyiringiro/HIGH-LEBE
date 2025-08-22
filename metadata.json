@@ -1,6 +1,8 @@
 {
-  "name": "Interview Coach AI",
-  "description": "An AI-powered interview coach that provides questions, evaluates answers, and gives feedback to help users practice for job interviews in multiple languages.",
-  "requestFramePermissions": [],
-  "prompt": ""
+  "name": "Interview Coach App",
+  "description": "An application to help users prepare for job interviews with mock interviews, question banks, progress tracking, and AI-powered feedback.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
 }

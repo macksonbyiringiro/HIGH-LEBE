@@ -1,115 +1,144 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Language, Message, Role } from './types';
-import { INITIAL_MESSAGES } from './constants';
-import { getInterviewQuestion, evaluateAnswerAndProvideNextQuestion } from './services/geminiService';
-import LanguageSelector from './components/LanguageSelector';
-import ChatInterface from './components/ChatInterface';
-import UserInput from './components/UserInput';
-import { BotIcon } from './components/Icons';
+
+import React, { useState, createContext, useMemo, useCallback, useEffect } from 'react';
+import { Screen, UserProfile, Language } from './types';
+import { i18n } from './constants';
+import { Header } from './components/common';
+import { 
+    OnboardingScreen, 
+    ProfileSetupScreen,
+    DashboardScreen, 
+    QuestionBankScreen, 
+    MockInterviewScreen,
+    TipsScreen,
+    ProgressScreen,
+    CVReviewScreen,
+    SettingsScreen,
+    PracticeExamScreen,
+    ChatScreen,
+} from './components/Screens';
+
+// App Context for global state
+interface AppContextType {
+    isAuthenticated: boolean;
+    user: UserProfile | null;
+    language: Language;
+    screen: Screen;
+    login: (user: UserProfile) => void;
+    logout: () => void;
+    setUser: (user: UserProfile) => void;
+    setLanguage: (lang: Language) => void;
+    setScreen: (screen: Screen) => void;
+}
+
+export const AppContext = createContext<AppContextType>({} as AppContextType);
 
 const App: React.FC = () => {
-  const [language, setLanguage] = useState<Language>('en');
-  const [messages, setMessages] = useState<Message[]>([INITIAL_MESSAGES.en]);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
+    const [isAuthenticated, setIsAuthenticated] = useState(false);
+    const [user, setUserState] = useState<UserProfile | null>(null);
+    const [language, setLanguageState] = useState<Language>(Language.EN);
+    const [screen, setScreenState] = useState<Screen>('onboarding');
 
-  const isMounted = useRef(true);
+    useEffect(() => {
+        const savedTheme = localStorage.getItem('theme');
+        if (savedTheme === 'dark' || (savedTheme !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
+        } else {
+            document.documentElement.classList.remove('dark');
+        }
+    }, []);
 
-  useEffect(() => {
-    isMounted.current = true;
-    return () => {
-      isMounted.current = false;
+    const login = useCallback((userData: UserProfile) => {
+        setIsAuthenticated(true);
+        setUserState(userData);
+        setLanguageState(userData.language);
+    }, []);
+
+    const logout = useCallback(() => {
+        setIsAuthenticated(false);
+        setUserState(null);
+        setScreenState('onboarding');
+    }, []);
+    
+    const setUser = useCallback((userData: UserProfile) => {
+        setUserState(userData);
+        setLanguageState(userData.language);
+    }, []);
+
+    const setLanguage = useCallback((lang: Language) => {
+        setLanguageState(lang);
+        if(user) {
+            setUserState({...user, language: lang});
+        }
+    }, [user]);
+
+    const setScreen = useCallback((newScreen: Screen) => {
+        setScreenState(newScreen);
+    }, []);
+
+    const contextValue = useMemo(() => ({
+        isAuthenticated,
+        user,
+        language,
+        screen,
+        login,
+        logout,
+        setUser,
+        setLanguage,
+        setScreen,
+    }), [isAuthenticated, user, language, screen, login, logout, setUser, setLanguage, setScreen]);
+    
+    const screenTitles: Record<Screen, string> = {
+        'dashboard': i18n[language]['dashboard'],
+        'questionBank': i18n[language]['questionBank'],
+        'mockInterview': i18n[language]['mockInterview'],
+        'practiceExam': i18n[language]['practiceExam'],
+        'tips': i18n[language]['tipsGuidance'],
+        'progress': i18n[language]['progressTracker'],
+        'cvReview': i18n[language]['cvReview'],
+        'settings': i18n[language]['settings'],
+        'chat': i18n[language]['chat'],
+        'onboarding': 'Welcome',
+        'profileSetup': 'Create Profile',
     };
-  }, []);
+    
+    const renderScreen = () => {
+        if (!isAuthenticated) {
+            return <OnboardingScreen />;
+        }
+        switch (screen) {
+            case 'profileSetup': return <ProfileSetupScreen />;
+            case 'dashboard': return <DashboardScreen />;
+            case 'questionBank': return <QuestionBankScreen />;
+            case 'mockInterview': return <MockInterviewScreen />;
+            case 'practiceExam': return <PracticeExamScreen />;
+            case 'tips': return <TipsScreen />;
+            case 'progress': return <ProgressScreen />;
+            case 'cvReview': return <CVReviewScreen />;
+            case 'settings': return <SettingsScreen />;
+            case 'chat': return <ChatScreen />;
+            default: return <DashboardScreen />;
+        }
+    };
+    
+    const showHeader = isAuthenticated && screen !== 'onboarding';
+    const showBackButton = showHeader && screen !== 'dashboard' && screen !== 'profileSetup';
 
-  const fetchInitialQuestion = useCallback(async (lang: Language) => {
-    if (!isMounted.current) return;
-    setIsLoading(true);
-    setError(null);
-    setMessages([INITIAL_MESSAGES[lang]]);
-    try {
-      const question = await getInterviewQuestion(lang);
-      if (isMounted.current) {
-        setMessages(prev => [...prev, { role: Role.BOSS, text: question }]);
-      }
-    } catch (err) {
-      if (isMounted.current) {
-        setError('Failed to fetch the first question. Please check your API key and try again.');
-        console.error(err);
-      }
-    } finally {
-      if (isMounted.current) {
-        setIsLoading(false);
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchInitialQuestion(language);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [language]);
-
-  const handleLanguageChange = (lang: Language) => {
-    setLanguage(lang);
-  };
-
-  const handleSendMessage = async (text: string) => {
-    if (!text.trim()) return;
-
-    const newMessages: Message[] = [...messages, { role: Role.USER, text }];
-    setMessages(newMessages);
-    setIsLoading(true);
-    setError(null);
-
-    const lastQuestion = messages.filter(m => m.role === Role.BOSS).pop()?.text;
-    if (!lastQuestion) {
-        setError("Could not find the last question to evaluate.");
-        setIsLoading(false);
-        return;
-    }
-
-    try {
-      const result = await evaluateAnswerAndProvideNextQuestion(lastQuestion, text, language);
-      if (isMounted.current) {
-        const feedbackMessage: Message = { role: Role.BOSS, text: `*Feedback:*\n${result.feedback}` };
-        const nextQuestionMessage: Message = { role: Role.BOSS, text: result.nextQuestion };
-        setMessages(prev => [...prev, feedbackMessage, nextQuestionMessage]);
-      }
-    } catch (err) {
-      if (isMounted.current) {
-        setError('Sorry, I had trouble processing your answer. Please try again.');
-        console.error(err);
-      }
-    } finally {
-      if (isMounted.current) {
-        setIsLoading(false);
-      }
-    }
-  };
-
-  return (
-    <div className="flex flex-col h-screen bg-gray-900 text-white font-sans">
-      <header className="bg-gray-900/50 backdrop-blur-sm shadow-lg p-4 flex justify-between items-center border-b border-gray-700 z-10">
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-blue-600 rounded-lg">
-            <BotIcon className="w-6 h-6 text-white" />
-          </div>
-          <h1 className="text-xl md:text-2xl font-bold text-white tracking-wide">Interview Coach AI</h1>
-        </div>
-        <LanguageSelector selectedLanguage={language} onSelectLanguage={handleLanguageChange} />
-      </header>
-      
-      <main className="flex-1 overflow-hidden flex flex-col">
-        <ChatInterface messages={messages} isLoading={isLoading} />
-        {error && (
-          <div className="bg-red-500/20 text-red-300 p-3 text-center text-sm">
-            {error}
-          </div>
-        )}
-        <UserInput onSendMessage={handleSendMessage} isLoading={isLoading} />
-      </main>
-    </div>
-  );
-};
+    return (
+        <AppContext.Provider value={contextValue}>
+            <div className="max-w-lg mx-auto bg-light dark:bg-gray-900 min-h-screen relative pb-16">
+                {showHeader && (
+                    <Header 
+                        title={screenTitles[screen]} 
+                        onBack={showBackButton ? () => setScreen('dashboard') : undefined}
+                        onRestart={logout}
+                    />
+                )}
+                <main className={showHeader ? 'pt-20' : ''}>
+                    {renderScreen()}
+                </main>
+            </div>
+        </AppContext.Provider>
+    );
+}
 
 export default App;
