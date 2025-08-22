@@ -1,0 +1,6 @@
+{
+  "name": "Interview Coach AI",
+  "description": "An AI-powered interview coach that provides questions, evaluates answers, and gives feedback to help users practice for job interviews in multiple languages.",
+  "requestFramePermissions": [],
+  "prompt": ""
+}
